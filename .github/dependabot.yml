@@ -1,0 +1,33 @@
+# Dependabot atualiza as actions pinadas (SHA e comentário da versão juntos) e
+# as dependências do uv.lock.
+#
+# O cooldown repete em cada ecossistema de propósito: é por entrada, não
+# global. Ele segura uma versão recém-publicada antes de propô-la, porque pacote
+# malicioso costuma ser despublicado em horas.
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+    groups:
+      actions:
+        patterns: ['*']
+
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+    groups:
+      # Um PR por grupo em vez de um por pacote: a revisão é o gargalo.
+      producao:
+        dependency-type: production
+      desenvolvimento:
+        dependency-type: development

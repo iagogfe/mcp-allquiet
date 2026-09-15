@@ -1,0 +1,110 @@
+# Segredos, dependências, workflows e SAST.
+#
+# Separado do CI de propósito: em repositório público cada job vira um check
+# nomeado que qualquer pessoa vê no PR. "Segredos" e "Dependências" vermelhos
+# dizem mais a um contribuidor de fora do que um CI monolítico vermelho.
+
+name: Segurança
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # CVE nova aparece sem ninguém commitar nada.
+    - cron: '31 5 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  segredos:
+    name: Segredos (Gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # segredo commitado e removido depois continua vazado
+      - name: Gitleaks
+        # Binário direto, não a gitleaks-action: a action comenta no PR pela API
+        # e exigiria permissão que PR de fork não tem. Imagem pinada por digest.
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo \
+            ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            detect --source=. --redact --no-banner --verbose
+
+  dependencias:
+    name: Dependências (pip-audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - name: Auditar o uv.lock
+        # O export sai com hash de cada pacote, o que permite --disable-pip:
+        # o pip-audit confere as versões exatas do lock sem resolver nada de novo.
+        run: |
+          uv export --locked --no-emit-project --format requirements-txt > requirements.txt
+          uvx pip-audit@2.10.1 --strict --disable-pip -r requirements.txt
+
+  workflows:
+    name: Workflows (zizmor + actionlint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      # zizmor audita a segurança dos workflows (pull_request_target, permissão
+      # excessiva, interpolação de input em shell). actionlint pega erro de sintaxe.
+      - name: zizmor
+        run: uvx zizmor@1.30.1 --offline .github/workflows
+      - name: actionlint
+        run: uvx --from actionlint-py@1.7.12.24 actionlint
+
+  codeql:
+    name: SAST (CodeQL)
+    # Code scanning só é gratuito em repositório público. Em privado o upload
+    # falha, então o job só roda depois da virada de visibilidade.
+    if: github.event.repository.visibility == 'public'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      security-events: write # publica os alertas na aba Security
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          languages: python
+          queries: security-and-quality
+      - uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
