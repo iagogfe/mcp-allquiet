@@ -103,20 +103,62 @@ def _scope(op: dict[str, Any]) -> str:
     return m[1] if m else "no scope"
 
 
-def _inline(node: Any, seen: frozenset[str] = frozenset()) -> Any:
+def _inline(
+    node: Any,
+    seen: frozenset[str] = frozenset(),
+    shared: frozenset[str] = frozenset(),
+    emitted: set[str] | None = None,
+) -> Any:
+    """Resolve $refs. With `emitted`, a schema in `shared` is shown in full once,
+    tagged "$name", and as {"$see": name} afterwards."""
     if isinstance(node, list):
-        return [_inline(v, seen) for v in node]
+        return [_inline(v, seen, shared, emitted) for v in node]
     if not isinstance(node, dict):
         return node
     if "$ref" in node:
         name = node["$ref"].rsplit("/", 1)[-1]
         if name in seen:
             return {"description": f"recursive {name}"}
-        return _inline(SCHEMAS[name], seen | {name})
-    out = {k: _inline(v, seen) for k, v in node.items() if not _noise(k, v)}
+        label = name.removeprefix("AllQuiet.Api.")
+        if emitted is not None:
+            if name in emitted:
+                return {"$see": label}
+            emitted.add(name)
+        out = _inline(SCHEMAS[name], seen | {name}, shared, emitted)
+        return {"$name": label, **out} if name in shared else out
+    out = {
+        k: _inline(v, seen, shared, emitted)
+        for k, v in node.items()
+        if not _noise(k, v)
+    }
     if "properties" in out and out.get("type") == "object":
         del out["type"]  # properties already says it is an object
     return out
+
+
+def _shared_refs(node: Any) -> frozenset[str]:
+    """$refs used more than once, counted in the order _inline expands them."""
+    counts: dict[str, int] = {}
+
+    def walk(n: Any, seen: frozenset[str]) -> None:
+        if isinstance(n, list):
+            for v in n:
+                walk(v, seen)
+        elif isinstance(n, dict) and "$ref" not in n:
+            for v in n.values():
+                walk(v, seen)
+        elif isinstance(n, dict):
+            name = n["$ref"].rsplit("/", 1)[-1]
+            if name in seen:
+                return
+            counts[name] = counts.get(name, 0) + 1
+            if (
+                counts[name] == 1
+            ):  # later uses become $see, so their insides don't count
+                walk(SCHEMAS[name], seen | {name})
+
+    walk(node, frozenset())
+    return frozenset(name for name, c in counts.items() if c > 1)
 
 
 NUMERIC_FORMATS = {"int32", "int64", "double", "float"}
@@ -214,16 +256,18 @@ def list_operations(
 
 @mcp.tool(annotations=READ, structured_output=False)
 def describe_operation(method: str, path: Path) -> str:
-    """Show an operation's parameters and JSON request body schema, with all $refs inlined."""
+    """Show an operation's parameters and JSON request body schema, with all $refs inlined.
+    A schema used more than once appears in full once, tagged "$name", then as {"$see": name}."""
     op = _operation(method, path)
     content = op.get("requestBody", {}).get("content", {})
     body = content.get("application/json") or next(iter(content.values()), {})
+    schema = body.get("schema")
     return json.dumps(
         {
             "summary": op.get("summary"),
             "description": (op.get("description") or "").replace(DEFAULT_KEY_TYPES, ""),
             "parameters": [_param(p) for p in op.get("parameters", [])],
-            "request_body": _inline(body.get("schema")),
+            "request_body": _inline(schema, shared=_shared_refs(schema), emitted=set()),
         },
         ensure_ascii=False,
         separators=(",", ":"),

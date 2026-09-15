@@ -102,6 +102,16 @@ async def test_describe_unknown_operation_is_error(client):
     assert "list_operations" in text
 
 
+@pytest.mark.anyio
+async def test_describe_operation_shows_a_repeated_schema_once(client):
+    # the POST /team-escalations body uses TimeFilter three times
+    text, _ = await call(
+        client, "describe_operation", method="POST", path="/team-escalations"
+    )
+    assert text.count('"$name":"Teams.Models.TimeFilter"') == 1
+    assert text.count('"$see":"Teams.Models.TimeFilter"') == 2
+
+
 # --- call_read / call_write / call_delete ---------------------------------
 
 
