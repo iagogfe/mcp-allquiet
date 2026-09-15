@@ -294,14 +294,14 @@ def describe_operation(method: str, path: Path) -> str:
     content = op.get("requestBody", {}).get("content", {})
     body = content.get("application/json") or next(iter(content.values()), {})
     schema = body.get("schema")
+    out = {
+        "description": _description(op),
+        "parameters": _params_by_location(op),
+        "request_body": _inline(schema, shared=_shared_refs(schema), emitted=set()),
+    }
+    # an operation without parameters or body says so by leaving the key out
     return json.dumps(
-        {
-            "description": _description(op),
-            "parameters": _params_by_location(op),
-            "request_body": _inline(schema, shared=_shared_refs(schema), emitted=set()),
-        },
-        ensure_ascii=False,
-        separators=(",", ":"),
+        {k: v for k, v in out.items() if v}, ensure_ascii=False, separators=(",", ":")
     )
 
 
