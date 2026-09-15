@@ -1,0 +1,53 @@
+# Publicação no PyPI quando uma release é publicada no GitHub.
+#
+# Trusted publishing (OIDC): o PyPI confia neste workflow, neste repositório e
+# no environment "pypi". Não existe token de PyPI guardado em lugar nenhum.
+#
+# Gatilho só por release publicada, que só mantenedor cria. Nunca por PR.
+
+name: Publicar no PyPI
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+jobs:
+  publicar:
+    name: Build e publicação
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: pypi
+      url: https://pypi.org/p/mcp-allquiet
+    permissions:
+      contents: read
+      id-token: write # OIDC do trusted publishing
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          # Cache compartilhado com o CI de PR poderia envenenar o artefato
+          # publicado. Build de release parte do zero.
+          enable-cache: false
+      - name: Validar tag contra a versão do pyproject
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          versao="$(uv version --short)"
+          if [ "$TAG" != "v$versao" ]; then
+            echo "::error::tag $TAG não corresponde à versão $versao do pyproject.toml"
+            exit 1
+          fi
+      - name: Testes no commit da release
+        run: |
+          uv sync --locked
+          uv run pytest
+      - run: uv build
+      - run: uv publish --trusted-publishing always

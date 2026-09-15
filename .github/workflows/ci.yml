@@ -1,0 +1,56 @@
+# Lint, tipos e testes.
+#
+# Repositório público: a pipeline é autocontida e não usa secret nenhum, então
+# roda igual em PR de fork.
+#
+# Actions de terceiros pinadas por SHA completo, com a versão em comentário.
+# Tag é mutável e foi o vetor dos ataques tj-actions (mar/2025) e trivy-action
+# (mar/2026). O Dependabot atualiza o SHA e o comentário juntos.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  testes:
+    name: Testes (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # Piso do requires-python e a versão mais nova. As do meio não pegam
+        # nada que essas duas deixem passar.
+        python: ['3.10', '3.14']
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          python-version: ${{ matrix.python }}
+      # --locked falha se o uv.lock não bate com o pyproject, em vez de
+      # resolver de novo em silêncio.
+      - run: uv sync --locked
+      - name: Lint
+        run: uv run ruff check
+      - name: Formatação
+        run: uv run ruff format --check
+      - name: Tipos
+        run: uv run ty check
+      - name: Testes
+        run: uv run pytest
