@@ -65,6 +65,10 @@ BOILERPLATE = {
         "(team or organization reachability)."
     ),
     "- Organization API keys are not subject to organization or team role checks.",
+    (
+        "- **Access:** Operates on a single organization. Pass organizationId when your "
+        "API key spans multiple organizations."
+    ),
 }
 
 
