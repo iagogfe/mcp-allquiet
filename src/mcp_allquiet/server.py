@@ -175,9 +175,8 @@ def _shared_refs(node: Any) -> frozenset[str]:
             if name in seen:
                 return
             counts[name] = counts.get(name, 0) + 1
-            if (
-                counts[name] == 1
-            ):  # later uses become $see, so their insides don't count
+            # later uses become $see, so their insides don't count
+            if counts[name] == 1:
                 walk(SCHEMAS[name], seen | {name})
 
     walk(node, frozenset())
