@@ -48,7 +48,15 @@ Prefer the incident tools (list_incidents, get_incident, create_incident, update
 who_is_on_call). For anything else: list_operations to find the path template,
 describe_operation to see its parameters and body, then call_read / call_write / call_delete.
 GET /auth/me shows what the API key can reach. Keys spanning several organizations need the
-organizationId query parameter. Timestamps are ISO-8601 UTC."""
+organizationId query parameter. Timestamps are ISO-8601 UTC.
+Operations accept organization API keys and personal access tokens, org-wide or team-scoped,
+unless describe_operation lists narrower key types."""
+
+# stated once in INSTRUCTIONS instead of in 86 of the 136 operation descriptions
+DEFAULT_KEY_TYPES = (
+    "\n- **Accepted key types:** organization API key (org-wide), organization API key "
+    "(team-scoped), personal access token (org-wide), personal access token (team-scoped)"
+)
 
 
 @asynccontextmanager
@@ -188,7 +196,7 @@ def describe_operation(method: str, path: Path) -> str:
             "method": method.upper(),
             "path": path,
             "summary": op.get("summary"),
-            "description": op.get("description"),
+            "description": (op.get("description") or "").replace(DEFAULT_KEY_TYPES, ""),
             "parameters": _inline(op.get("parameters", [])),
             "request_body": _inline(body.get("schema")),
         },
