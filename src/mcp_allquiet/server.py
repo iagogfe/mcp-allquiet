@@ -117,6 +117,17 @@ def _inline(node: Any, seen: frozenset[str] = frozenset()) -> Any:
     return {k: _inline(v, seen) for k, v in node.items() if k != "nullable"}
 
 
+def _param(p: dict[str, Any]) -> dict[str, Any]:
+    """Parameter with its schema flattened in, and `required` only when true."""
+    p = _inline(p)
+    flat = {k: v for k, v in p.items() if k not in ("schema", "required")}
+    for k, v in (p.get("schema") or {}).items():
+        flat.setdefault(k, v)
+    if p.get("required"):
+        flat["required"] = True
+    return flat
+
+
 def _clip(text: str) -> str:
     if len(text) <= MAX_CHARS:
         return text
@@ -198,7 +209,7 @@ def describe_operation(method: str, path: Path) -> str:
             "path": path,
             "summary": op.get("summary"),
             "description": (op.get("description") or "").replace(DEFAULT_KEY_TYPES, ""),
-            "parameters": _inline(op.get("parameters", [])),
+            "parameters": [_param(p) for p in op.get("parameters", [])],
             "request_body": _inline(body.get("schema")),
         },
         ensure_ascii=False,
