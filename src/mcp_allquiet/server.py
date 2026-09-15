@@ -51,7 +51,8 @@ GET /auth/me shows what the API key can reach. Keys spanning several organizatio
 organizationId query parameter. Timestamps are ISO-8601 UTC.
 Unless describe_operation says otherwise, operations accept organization API keys and
 personal access tokens (org-wide or team-scoped), access is checked against the specific team
-or organization, and organization API keys skip team and organization role checks."""
+or organization, and organization API keys skip team and organization role checks.
+Required team and organization roles apply to personal access tokens only."""
 
 # said once in INSTRUCTIONS instead of in most of the 136 operation descriptions
 BOILERPLATE = {
@@ -74,7 +75,11 @@ BOILERPLATE = {
 
 def _description(op: dict[str, Any]) -> str:
     lines = (op.get("description") or "").split("\n")
-    return "\n".join(line for line in lines if line.strip() and line not in BOILERPLATE)
+    return "\n".join(
+        line.replace(" (user-linked keys only)", "")
+        for line in lines
+        if line.strip() and line not in BOILERPLATE
+    )
 
 
 @asynccontextmanager
