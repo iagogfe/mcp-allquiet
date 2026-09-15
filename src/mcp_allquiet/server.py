@@ -76,7 +76,7 @@ BOILERPLATE = {
 def _description(op: dict[str, Any]) -> str:
     lines = (op.get("description") or "").split("\n")
     return "\n".join(
-        line.replace(" (user-linked keys only)", "")
+        line.replace(" (user-linked keys only)", "").replace("**", "")
         for line in lines
         if line.strip() and line not in BOILERPLATE
     )
