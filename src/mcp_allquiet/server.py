@@ -193,6 +193,7 @@ def describe_operation(method: str, path: Path) -> str:
             "request_body": _inline(body.get("schema")),
         },
         ensure_ascii=False,
+        separators=(",", ":"),
     )
 
 
