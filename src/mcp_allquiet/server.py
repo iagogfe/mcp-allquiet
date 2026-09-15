@@ -217,8 +217,6 @@ def describe_operation(method: str, path: Path) -> str:
     body = content.get("application/json") or next(iter(content.values()), {})
     return json.dumps(
         {
-            "method": method.upper(),
-            "path": path,
             "summary": op.get("summary"),
             "description": (op.get("description") or "").replace(DEFAULT_KEY_TYPES, ""),
             "parameters": [_param(p) for p in op.get("parameters", [])],
