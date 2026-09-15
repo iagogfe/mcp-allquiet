@@ -308,9 +308,14 @@ async def list_incidents(
 
 @mcp.tool(annotations=READ, structured_output=False)
 async def get_incident(ctx: Context[httpx2.AsyncClient], incident_id: str) -> str:
-    """Full incident as markdown: timeline, attributes, assignees."""
-    path = "/incident/search/{incidentId}/markdown"
-    return _body(await _request(ctx, "GET", path, {"incidentId": incident_id}))
+    """Full incident as markdown (timeline, attributes, assignees) plus the intents
+    update_incident can record on it now."""
+    params = {"incidentId": incident_id}
+    md = await _request(ctx, "GET", "/incident/search/{incidentId}/markdown", params)
+    # the markdown view omits allowedIntents, so read them from the JSON view
+    inc = (await _request(ctx, "GET", "/incident/search/{incidentId}", params)).json()
+    intents = ", ".join(inc.get("allowedIntents") or []) or "none"
+    return _clip(f"{md.text}\n\nAllowed intents: {intents}")
 
 
 @mcp.tool(annotations=WRITE, structured_output=False)
@@ -337,7 +342,11 @@ async def update_incident(
     intent: Annotated[
         str | None,
         Field(
-            description="Action to record, from the incident's allowedIntents (e.g. Resolved)"
+            description=(
+                "Action to record: Investigated (acknowledge), Resolved, Unresolved, "
+                "Commented, Assigned, Escalated, Snoozed, Archived. get_incident shows "
+                "which ones the incident allows now"
+            )
         ),
     ] = None,
     message: Annotated[str | None, Field(max_length=5000)] = None,

@@ -20,15 +20,17 @@ def anyio_backend():
 
 
 class FakeAllQuiet:
-    """Stands in for the All Quiet API: records every request, returns `response`."""
+    """Stands in for the All Quiet API: records every request and answers from
+    `routes` (keyed by URL path) or else with `response`."""
 
     def __init__(self):
         self.requests: list[httpx2.Request] = []
         self.response = httpx2.Response(200, json={})
+        self.routes: dict[str, httpx2.Response] = {}
 
     def __call__(self, request: httpx2.Request) -> httpx2.Response:
         self.requests.append(request)
-        return self.response
+        return self.routes.get(request.url.path, self.response)
 
 
 @pytest.fixture
@@ -359,14 +361,20 @@ async def test_list_incidents_last_page_has_no_next_offset(client, api):
 
 
 @pytest.mark.anyio
-async def test_get_incident_returns_markdown(client, api):
-    api.response = httpx2.Response(200, text="# Disk full on db-1\nStatus: Open")
-    text, is_error = await call(client, "get_incident", incident_id="inc/1")
+async def test_get_incident_returns_markdown_and_allowed_intents(client, api):
+    # the markdown view has no allowedIntents, which update_incident needs
+    api.routes = {
+        "/api/public/v1/incident/search/inc-1/markdown": httpx2.Response(
+            200, text="# Disk full on db-1\nStatus: Open"
+        ),
+        "/api/public/v1/incident/search/inc-1": httpx2.Response(
+            200, json={**INCIDENT, "allowedIntents": ["Investigated", "Commented"]}
+        ),
+    }
+    text, is_error = await call(client, "get_incident", incident_id="inc-1")
     assert not is_error
-    assert text == "# Disk full on db-1\nStatus: Open"
-    assert (
-        api.requests[0].url.raw_path
-        == b"/api/public/v1/incident/search/inc%2F1/markdown"
+    assert text == (
+        "# Disk full on db-1\nStatus: Open\n\nAllowed intents: Investigated, Commented"
     )
 
 
