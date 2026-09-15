@@ -1,6 +1,7 @@
 # mcp-allquiet
 
 [![CI](https://github.com/iagogfe/mcp-allquiet/actions/workflows/ci.yml/badge.svg)](https://github.com/iagogfe/mcp-allquiet/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/mcp-allquiet)](https://pypi.org/project/mcp-allquiet/)
 [![License](https://img.shields.io/github/license/iagogfe/mcp-allquiet)](LICENSE)
 
 An [MCP](https://modelcontextprotocol.io) server for [All Quiet](https://allquiet.app), the incident management and on-call platform. It lets Claude, Cursor or any MCP client triage incidents, check who is on call and reach every operation of the All Quiet public API.
