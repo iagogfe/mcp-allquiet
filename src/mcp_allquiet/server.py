@@ -208,6 +208,15 @@ def _param(p: dict[str, Any]) -> dict[str, Any]:
     return flat
 
 
+def _params_by_location(op: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """Parameters grouped by where they go (query, path, header), so `in` isn't repeated."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for p in op.get("parameters", []):
+        flat = _param(p)
+        groups.setdefault(flat.pop("in", "query"), []).append(flat)
+    return groups
+
+
 def _clip(text: str) -> str:
     if len(text) <= MAX_CHARS:
         return text
@@ -288,7 +297,7 @@ def describe_operation(method: str, path: Path) -> str:
     return json.dumps(
         {
             "description": _description(op),
-            "parameters": [_param(p) for p in op.get("parameters", [])],
+            "parameters": _params_by_location(op),
             "request_body": _inline(schema, shared=_shared_refs(schema), emitted=set()),
         },
         ensure_ascii=False,
