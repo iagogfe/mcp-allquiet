@@ -113,7 +113,8 @@ def _inline(node: Any, seen: frozenset[str] = frozenset()) -> Any:
         if name in seen:
             return {"description": f"recursive {name}"}
         return _inline(SCHEMAS[name], seen | {name})
-    return {k: _inline(v, seen) for k, v in node.items()}
+    # nullable only restates what the required list already says
+    return {k: _inline(v, seen) for k, v in node.items() if k != "nullable"}
 
 
 def _clip(text: str) -> str:
