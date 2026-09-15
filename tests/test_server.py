@@ -402,10 +402,9 @@ async def test_create_incident_posts_only_given_fields(client, api):
 
 @pytest.mark.anyio
 async def test_update_incident_builds_patch_operations(client, api):
-    api.response = httpx2.Response(
-        200, json={"incidents": [INCIDENT], "hasMore": False}
-    )
-    _, is_error = await call(
+    # the spec says a list response, the live API answers with the incident itself
+    api.response = httpx2.Response(200, json=INCIDENT)
+    text, is_error = await call(
         client,
         "update_incident",
         incident_id="inc-1",
@@ -422,6 +421,7 @@ async def test_update_incident_builds_patch_operations(client, api):
             "changeSeverity": {"severity": "Minor"},
         }
     }
+    assert json.loads(text) == COMPACT
 
 
 @pytest.mark.anyio

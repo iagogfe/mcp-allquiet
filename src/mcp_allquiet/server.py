@@ -366,9 +366,8 @@ async def update_incident(
     r = await _request(
         ctx, "PATCH", path, {"incidentId": incident_id}, body={"operations": ops}
     )
-    return json.dumps(
-        [_incident(i) for i in r.json().get("incidents") or []], ensure_ascii=False
-    )
+    # the spec declares a list response, the live API returns the incident itself
+    return json.dumps(_incident(r.json()), ensure_ascii=False)
 
 
 @mcp.tool(annotations=READ, structured_output=False)

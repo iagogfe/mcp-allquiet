@@ -49,6 +49,8 @@ Claude Desktop, Cursor and other clients (`mcpServers` JSON):
 
 All Quiet keys carry per-resource scopes (`incidents:list`, `teams:update`...), can be limited to teams, and can expire. The server has no read-only switch on purpose: **create a key with only `list`/`get` scopes** and every write fails at the API. A personal access token can never do more than its user can in the UI.
 
+A personal access token only reaches teams its user belongs to. A team created through the API stays out of reach (`403`) until a `POST /team-membership` adds the user as `Administrator`. Organization API keys skip team role checks.
+
 Keys spanning several organizations need the `organizationId` query parameter on many operations. The API says so in its error, and the model can pass it through the generic tools.
 
 ## Tools
