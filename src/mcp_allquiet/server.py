@@ -264,7 +264,6 @@ def describe_operation(method: str, path: Path) -> str:
     schema = body.get("schema")
     return json.dumps(
         {
-            "summary": op.get("summary"),
             "description": (op.get("description") or "").replace(DEFAULT_KEY_TYPES, ""),
             "parameters": [_param(p) for p in op.get("parameters", [])],
             "request_body": _inline(schema, shared=_shared_refs(schema), emitted=set()),
