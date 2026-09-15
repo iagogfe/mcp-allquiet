@@ -113,7 +113,10 @@ def _inline(node: Any, seen: frozenset[str] = frozenset()) -> Any:
         if name in seen:
             return {"description": f"recursive {name}"}
         return _inline(SCHEMAS[name], seen | {name})
-    return {k: _inline(v, seen) for k, v in node.items() if not _noise(k, v)}
+    out = {k: _inline(v, seen) for k, v in node.items() if not _noise(k, v)}
+    if "properties" in out and out.get("type") == "object":
+        del out["type"]  # properties already says it is an object
+    return out
 
 
 NUMERIC_FORMATS = {"int32", "int64", "double", "float"}
