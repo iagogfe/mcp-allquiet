@@ -48,7 +48,38 @@ Prefer the incident tools (list_incidents, get_incident, create_incident, update
 who_is_on_call). For anything else: list_operations to find the path template,
 describe_operation to see its parameters and body, then call_read / call_write / call_delete.
 GET /auth/me shows what the API key can reach. Keys spanning several organizations need the
-organizationId query parameter. Timestamps are ISO-8601 UTC."""
+organizationId query parameter. Timestamps are ISO-8601 UTC.
+Unless describe_operation says otherwise, operations accept organization API keys and
+personal access tokens (org-wide or team-scoped), access is checked against the specific team
+or organization, and organization API keys skip team and organization role checks.
+Required team and organization roles apply to personal access tokens only."""
+
+# said once in INSTRUCTIONS instead of in most of the 136 operation descriptions
+BOILERPLATE = {
+    "**Required API key permissions**",
+    (
+        "- **Accepted key types:** organization API key (org-wide), organization API key "
+        "(team-scoped), personal access token (org-wide), personal access token (team-scoped)"
+    ),
+    (
+        "- **Access:** Access is checked against the specific resource "
+        "(team or organization reachability)."
+    ),
+    "- Organization API keys are not subject to organization or team role checks.",
+    (
+        "- **Access:** Operates on a single organization. Pass organizationId when your "
+        "API key spans multiple organizations."
+    ),
+}
+
+
+def _description(op: dict[str, Any]) -> str:
+    lines = (op.get("description") or "").split("\n")
+    return "\n".join(
+        line.replace(" (user-linked keys only)", "").replace("**", "")
+        for line in lines
+        if line.strip() and line not in BOILERPLATE
+    )
 
 
 @asynccontextmanager
@@ -95,17 +126,94 @@ def _scope(op: dict[str, Any]) -> str:
     return m[1] if m else "no scope"
 
 
-def _inline(node: Any, seen: frozenset[str] = frozenset()) -> Any:
+def _inline(
+    node: Any,
+    seen: frozenset[str] = frozenset(),
+    shared: frozenset[str] = frozenset(),
+    emitted: set[str] | None = None,
+) -> Any:
+    """Resolve $refs. With `emitted`, a schema in `shared` is shown in full once,
+    tagged "$name", and as {"$see": name} afterwards."""
     if isinstance(node, list):
-        return [_inline(v, seen) for v in node]
+        return [_inline(v, seen, shared, emitted) for v in node]
     if not isinstance(node, dict):
         return node
     if "$ref" in node:
         name = node["$ref"].rsplit("/", 1)[-1]
         if name in seen:
             return {"description": f"recursive {name}"}
-        return _inline(SCHEMAS[name], seen | {name})
-    return {k: _inline(v, seen) for k, v in node.items()}
+        label = name.removeprefix("AllQuiet.Api.")
+        if emitted is not None:
+            if name in emitted:
+                return {"$see": label}
+            emitted.add(name)
+        out = _inline(SCHEMAS[name], seen | {name}, shared, emitted)
+        return {"$name": label, **out} if name in shared else out
+    out = {
+        k: _inline(v, seen, shared, emitted)
+        for k, v in node.items()
+        if not _noise(k, v)
+    }
+    if "properties" in out and out.get("type") == "object":
+        del out["type"]  # properties already says it is an object
+    return out
+
+
+def _shared_refs(node: Any) -> frozenset[str]:
+    """$refs used more than once, counted in the order _inline expands them."""
+    counts: dict[str, int] = {}
+
+    def walk(n: Any, seen: frozenset[str]) -> None:
+        if isinstance(n, list):
+            for v in n:
+                walk(v, seen)
+        elif isinstance(n, dict) and "$ref" not in n:
+            for v in n.values():
+                walk(v, seen)
+        elif isinstance(n, dict):
+            name = n["$ref"].rsplit("/", 1)[-1]
+            if name in seen:
+                return
+            counts[name] = counts.get(name, 0) + 1
+            # later uses become $see, so their insides don't count
+            if counts[name] == 1:
+                walk(SCHEMAS[name], seen | {name})
+
+    walk(node, frozenset())
+    return frozenset(name for name, c in counts.items() if c > 1)
+
+
+NUMERIC_FORMATS = {"int32", "int64", "double", "float"}
+
+
+def _noise(k: str, v: Any) -> bool:
+    """Schema keys a model gains nothing from: nullable restates the required list,
+    numeric formats and additionalProperties false don't change what it sends."""
+    return (
+        k == "nullable"
+        or (k == "format" and v in NUMERIC_FORMATS)
+        or (k == "additionalProperties" and v is False)
+    )
+
+
+def _param(p: dict[str, Any]) -> dict[str, Any]:
+    """Parameter with its schema flattened in, and `required` only when true."""
+    p = _inline(p)
+    flat = {k: v for k, v in p.items() if k not in ("schema", "required")}
+    for k, v in (p.get("schema") or {}).items():
+        flat.setdefault(k, v)
+    if p.get("required"):
+        flat["required"] = True
+    return flat
+
+
+def _params_by_location(op: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """Parameters grouped by where they go (query, path, header), so `in` isn't repeated."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for p in op.get("parameters", []):
+        flat = _param(p)
+        groups.setdefault(flat.pop("in", "query"), []).append(flat)
+    return groups
 
 
 def _clip(text: str) -> str:
@@ -179,20 +287,20 @@ def list_operations(
 
 @mcp.tool(annotations=READ, structured_output=False)
 def describe_operation(method: str, path: Path) -> str:
-    """Show an operation's parameters and JSON request body schema, with all $refs inlined."""
+    """Show an operation's parameters and JSON request body schema, with all $refs inlined.
+    A schema used more than once appears in full once, tagged "$name", then as {"$see": name}."""
     op = _operation(method, path)
     content = op.get("requestBody", {}).get("content", {})
     body = content.get("application/json") or next(iter(content.values()), {})
+    schema = body.get("schema")
+    out = {
+        "description": _description(op),
+        "parameters": _params_by_location(op),
+        "request_body": _inline(schema, shared=_shared_refs(schema), emitted=set()),
+    }
+    # an operation without parameters or body says so by leaving the key out
     return json.dumps(
-        {
-            "method": method.upper(),
-            "path": path,
-            "summary": op.get("summary"),
-            "description": op.get("description"),
-            "parameters": _inline(op.get("parameters", [])),
-            "request_body": _inline(body.get("schema")),
-        },
-        ensure_ascii=False,
+        {k: v for k, v in out.items() if v}, ensure_ascii=False, separators=(",", ":")
     )
 
 
