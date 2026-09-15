@@ -113,8 +113,15 @@ def _inline(node: Any, seen: frozenset[str] = frozenset()) -> Any:
         if name in seen:
             return {"description": f"recursive {name}"}
         return _inline(SCHEMAS[name], seen | {name})
-    # nullable only restates what the required list already says
-    return {k: _inline(v, seen) for k, v in node.items() if k != "nullable"}
+    # nullable only restates the required list; numeric formats don't change what a model sends
+    return {
+        k: _inline(v, seen)
+        for k, v in node.items()
+        if k != "nullable" and not (k == "format" and v in NUMERIC_FORMATS)
+    }
+
+
+NUMERIC_FORMATS = {"int32", "int64", "double", "float"}
 
 
 def _param(p: dict[str, Any]) -> dict[str, Any]:
