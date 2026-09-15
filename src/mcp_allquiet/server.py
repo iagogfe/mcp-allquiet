@@ -49,14 +49,28 @@ who_is_on_call). For anything else: list_operations to find the path template,
 describe_operation to see its parameters and body, then call_read / call_write / call_delete.
 GET /auth/me shows what the API key can reach. Keys spanning several organizations need the
 organizationId query parameter. Timestamps are ISO-8601 UTC.
-Operations accept organization API keys and personal access tokens, org-wide or team-scoped,
-unless describe_operation lists narrower key types."""
+Unless describe_operation says otherwise, operations accept organization API keys and
+personal access tokens (org-wide or team-scoped), access is checked against the specific team
+or organization, and organization API keys skip team and organization role checks."""
 
-# stated once in INSTRUCTIONS instead of in 86 of the 136 operation descriptions
-DEFAULT_KEY_TYPES = (
-    "\n- **Accepted key types:** organization API key (org-wide), organization API key "
-    "(team-scoped), personal access token (org-wide), personal access token (team-scoped)"
-)
+# said once in INSTRUCTIONS instead of in most of the 136 operation descriptions
+BOILERPLATE = {
+    "**Required API key permissions**",
+    (
+        "- **Accepted key types:** organization API key (org-wide), organization API key "
+        "(team-scoped), personal access token (org-wide), personal access token (team-scoped)"
+    ),
+    (
+        "- **Access:** Access is checked against the specific resource "
+        "(team or organization reachability)."
+    ),
+    "- Organization API keys are not subject to organization or team role checks.",
+}
+
+
+def _description(op: dict[str, Any]) -> str:
+    lines = (op.get("description") or "").split("\n")
+    return "\n".join(line for line in lines if line.strip() and line not in BOILERPLATE)
 
 
 @asynccontextmanager
@@ -264,7 +278,7 @@ def describe_operation(method: str, path: Path) -> str:
     schema = body.get("schema")
     return json.dumps(
         {
-            "description": (op.get("description") or "").replace(DEFAULT_KEY_TYPES, ""),
+            "description": _description(op),
             "parameters": [_param(p) for p in op.get("parameters", [])],
             "request_body": _inline(schema, shared=_shared_refs(schema), emitted=set()),
         },
