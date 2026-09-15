@@ -92,7 +92,7 @@ def _fill(path: str, params: dict[str, str]) -> str:
 
 def _scope(op: dict[str, Any]) -> str:
     m = re.search(r"\*\*Scope:\*\* `([^`]+)`", op.get("description", ""))
-    return m[1] if m else "?"
+    return m[1] if m else "no scope"
 
 
 def _inline(node: Any, seen: frozenset[str] = frozenset()) -> Any:

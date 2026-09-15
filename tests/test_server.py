@@ -70,6 +70,12 @@ async def test_list_operations_shows_required_scope(client):
 
 
 @pytest.mark.anyio
+async def test_list_operations_marks_operations_without_scope(client):
+    text, _ = await call(client, "list_operations", query="/timezone")
+    assert text.endswith("[no scope]")
+
+
+@pytest.mark.anyio
 async def test_describe_operation_inlines_schemas(client):
     text, is_error = await call(
         client, "describe_operation", method="POST", path="/incident"
